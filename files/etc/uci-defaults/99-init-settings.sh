@@ -156,28 +156,36 @@ echo "Configuring firewall zones..."
 uci set firewall.@zone[1].network='wan'
 uci commit firewall
 
-# Wireless configuration
+# Wireless configuration using UCI batch
 echo "Configuring wireless..."
-uci set wireless.@wifi-device[0].disabled='0'
-uci set wireless.@wifi-iface[0].disabled='0'
-uci set wireless.@wifi-iface[0].mode='ap'
-uci set wireless.@wifi-iface[0].encryption='psk2'
-uci set wireless.@wifi-iface[0].key='XIDZs2025'
-uci set wireless.@wifi-device[0].country='ID'
+cat << EOF | uci import wireless
+set wireless.@wifi-device[0].disabled='0'
+set wireless.@wifi-iface[0].disabled='0'
+set wireless.@wifi-iface[0].mode='ap'
+set wireless.@wifi-iface[0].encryption='psk2'
+set wireless.@wifi-iface[0].key='XIDZs2025'
+set wireless.@wifi-device[0].country='ID'
+EOF
 
 if grep -q "Raspberry Pi 4\|Raspberry Pi 3" /proc/cpuinfo 2>/dev/null; then
     echo "Raspberry Pi detected - configuring 5GHz WiFi"
-    uci set wireless.@wifi-iface[0].ssid='XIDZs_5G'
-    uci set wireless.@wifi-device[0].channel='149'
-    uci set wireless.@wifi-device[0].htmode='VHT80'
+    cat << EOF | uci import wireless
+set wireless.@wifi-iface[0].ssid='XIDZs_5G'
+set wireless.@wifi-device[0].channel='149'
+set wireless.@wifi-device[0].htmode='VHT80'
+EOF
 else
     echo "Generic device - configuring 2.4GHz WiFi"
-    uci set wireless.@wifi-iface[0].ssid='XIDZs'
-    uci set wireless.@wifi-device[0].channel='1'
-    uci set wireless.@wifi-device[0].htmode='HT20'
+    cat << EOF | uci import wireless
+set wireless.@wifi-iface[0].ssid='XIDZs'
+set wireless.@wifi-device[0].channel='1'
+set wireless.@wifi-device[0].htmode='HT20'
+EOF
 fi
 
 uci commit wireless
+
+( wifi reload && wifi up ) >/dev/null 2>&1
 
 # WiFi startup fix for RPi
 if iw dev 2>/dev/null | grep -q Interface; then
@@ -222,17 +230,6 @@ echo "Sett file permissions..."
 EXEC_FILES="$FREE_SH $JAM $PING_SH $REPAIR_RO $XDEV $XIDZ $XTUN $INSTALL2_SH $TTY_SH $QUENX_SH $ISSUE"
 chmod +x $EXEC_FILES 2>/dev/null
 
-# System customizations
-echo "Applying system.."
-sed -i -e 's/\[ -f \/etc\/banner \] && cat \/etc\/banner/#&/' -e 's/\[ -n \"\$FAILSAFE\" \] && cat \/etc\/banner.failsafe/& || \/usr\/bin\/xidz/' "$PROFILE"
-"$ISSUE" enable
-
-# Add startup scripts
-echo "Adding custom startup scripts..."
-sed -i '/exit 0/i #/etc/init.d/openclash restart' "$RC_LOCAL"
-sed -i '/exit 0/i #sleep 5 && /sbin/free.sh' "$RC_LOCAL"
-sed -i '/exit 0/i #/sbin/jam bug.com' "$RC_LOCAL"
-
 # Device-specific configuration
 echo "Checking device Model..."
 if grep -q "OrangePi Zero3" /proc/device-tree/model 2>/dev/null; then
@@ -257,15 +254,27 @@ else
     rm -f $AMLOGIC_CLEANUP_FILES
 fi
 
+# System customizations
+echo "Applying system.."
+sed -i -e 's/\[ -f \/etc\/banner \] && cat \/etc\/banner/#&/' -e 's/\[ -n \"\$FAILSAFE\" \] && cat \/etc\/banner.failsafe/& || \/usr\/bin\/xidz/' "$PROFILE"
+"$ISSUE" enable
+
+# Add startup scripts
+echo "Adding custom startup scripts..."
+sed -i -e '/exit 0/i #/sbin/jam bug.com' \
+       -e '/exit 0/i #sleep 5 && /sbin/free.sh' \
+       -e '/exit 0/i #/etc/init.d/openclash restart' \
+       "$RC_LOCAL"
+       
+# Execute scripts
+echo "Running install2 script..."
+"$INSTALL2_SH"
+
 echo "Running quenx script..."
 "$QUENX_SH"
 
 echo "Running TTY script..."
 "$TTY_SH"
-
-# Execute scripts
-echo "Running install2 script..."
-"$INSTALL2_SH"
 
 # Tunnel configuration
 echo "Checking tunnel.."
@@ -347,11 +356,13 @@ done
 
 # Web server configuration
 echo "Configuring web server and PHP..."
-uci set uhttpd.main.ubus_prefix='/ubus'
-uci set uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
-uci set uhttpd.main.index_page='cgi-bin/luci'
-uci add_list uhttpd.main.index_page='index.html'
-uci add_list uhttpd.main.index_page='index.php'
+cat << EOF | uci import uhttpd
+set uhttpd.main.ubus_prefix='/ubus'
+set uhttpd.main.interpreter='.php=/usr/bin/php-cgi'
+set uhttpd.main.index_page='cgi-bin/luci'
+add_list uhttpd.main.index_page='index.html'
+add_list uhttpd.main.index_page='index.php'
+EOF
 uci commit uhttpd
 
 cp /etc/php.ini "$PHP_INI_BAK"
