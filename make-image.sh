@@ -31,7 +31,7 @@ kmod-usb-serial-qualcomm kmod-usb-serial-sierrawireless kmod-usb-acm kmod-usb-wd
 kmod-usb-net-rndis kmod-usb-net-cdc-ether kmod-usb-net-cdc-ncm kmod-usb-net-sierrawireless \
 kmod-usb-net-qmi-wwan kmod-usb-net-huawei-cdc-ncm kmod-usb-net-cdc-mbim \
 uqmi libqmi qmi-utils umbim libmbim mbim-utils luci-proto-qmi \
-modemmanager luci-proto-modemmanager luci-proto-ncm usb-modeswitch xmm-modem luci-proto-xmm"
+modemmanager luci-proto-modemmanager usb-modeswitch luci-proto-ncm xmm-modem luci-proto-xmm"
 
 # MODEM TOOLS
 PACKAGES+=" atinout modeminfo modemband sms-tool luci-app-modeminfo luci-app-modemband luci-app-sms-tool-js picocom minicom"
@@ -104,13 +104,12 @@ configure_profile_packages() {
 
 # RELEASE SPECIFIC
 configure_release_packages() {
-    EXCLUDED+=" -dnsmasq -wpad-basic -wpad-mini -wpad-basic-wolfssl -wpad-mini-wolfssl"
-
     if [[ "${BASE:-}" == "openwrt" ]]; then
         MISC+=" wpad-openssl iw iwinfo wireless-regdb kmod-cfg80211 kmod-mac80211 luci-app-temp-status"
+        EXCLUDED+=" -dnsmasq"
     elif [[ "${BASE:-}" == "immortalwrt" ]]; then
         MISC+=" wpad-openssl iw iwinfo wireless-regdb kmod-cfg80211 kmod-mac80211"
-        EXCLUDED+=" -cpusage -automount -libustream-openssl -default-settings-chn -luci-i18n-base-zh-cn"
+        EXCLUDED+=" -dnsmasq -cpusage -automount -libustream-openssl -default-settings-chn -luci-i18n-base-zh-cn"
         
         if [[ "${ARCH_2:-}" == "x86_64" ]]; then
             EXCLUDED+=" -kmod-usb-net-rtl8152-vendor"
