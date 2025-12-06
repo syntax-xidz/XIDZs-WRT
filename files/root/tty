@@ -1,0 +1,7 @@
+# wwan0 modem
+if [ "$ACTION" = "add" ]; then
+    if [ -e "/sys/class/net/wwan0" ]; then
+        /sbin/ip link set wwan0 up
+        mm_log "info" "Proactively set 'wwan0' link UP to aid ModemManager detection."
+    fi
+fi

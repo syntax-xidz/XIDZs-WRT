@@ -1,0 +1,64 @@
+#!/bin/bash
+# HG680P & B860H
+# By Lutfa Ilham | Mod By xidz_x
+
+if [ "$(id -u)" != "0" ]; then
+  echo "This script must be run as root" 1>&2
+  exit 1
+fi
+
+SERVICE_NAME="Internet Indicator"
+
+function loop() {
+  while true; do
+    if curl -X "HEAD" --connect-timeout 2 -so /dev/null "http://bing.com"; then
+      for i in {1..3}; do
+        x-gpioled -lan on
+        sleep 0.15
+        x-gpioled -lan dis
+        sleep 0.15
+      done
+    else
+      for i in {1..3}; do
+        x-gpioled -lan off
+        sleep 0.15
+        x-gpioled -lan dis
+        sleep 0.15
+      done
+    fi
+    sleep 2
+  done
+}
+
+function start() {
+  echo -e "Starting ${SERVICE_NAME} service ..."
+  screen -AmdS internet-indicator "${0}" -l
+}
+
+function stop() {
+  echo -e "Stopping ${SERVICE_NAME} service ..."
+  kill $(screen -list | grep internet-indicator | awk -F '[.]' {'print $1'})
+}
+
+function usage() {
+  cat <<EOF
+Usage:
+  -r  Run ${SERVICE_NAME} service
+  -s  Stop ${SERVICE_NAME} service
+EOF
+}
+
+case "${1}" in
+  -l)
+    loop
+    ;;
+  -r)
+    start
+    ;;
+  -s)
+    stop
+    ;;
+  *)
+    usage
+    ;;
+esac

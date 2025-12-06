@@ -1,0 +1,17 @@
+#!/bin/sh /etc/rc.common
+
+START=17
+
+boot() {
+    for dir in "/var/run" "/tmp/run" "/tmp"; do
+        [ -d "$dir" ] && {
+            rm -f "$dir"/*.pid 2>/dev/null
+            find "$dir" -type f -name "*.pid" -delete 2>/dev/null
+        }
+    done
+    return 0
+}
+
+start() {
+    boot
+}

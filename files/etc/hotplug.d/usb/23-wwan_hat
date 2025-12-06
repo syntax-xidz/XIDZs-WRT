@@ -1,0 +1,278 @@
+#!/bin/sh
+#
+# Hotplug Skrip ini digunakan untuk mengonfigurasi module WWAN pada HAT OPIZ
+# Fungsi utamanya adalah mengonfigurasi path USB pada OpenWrt yang tertukar saat menyalakan atau reboot (restart) device.
+#
+# Support Device:
+#  * EM7430
+#  * EM7455
+#  * LT4220
+#  * L850-GL
+#  * L860-GL
+#  * DW5821e / DW5821e-eSIM
+#  * T99W175
+#  * FM350-GL
+#  * RM50XX Series
+# Credit Mbah Wisnu ( DBAI )
+# @lionware <lionware@siltesa.com>
+# Februari 2025
+#
+# Distribusi dan penggunaan kode ini diperbolehkan digunakan di perangkat manapun dan dapat dimodifikasi, 
+# tetapi tanpa jaminan kode ini berjalan dengan baik di perangkat tersebut :v
+#
+# WWAN HAT (USB WWAN)
+#
+#Debug USB
+#logger -t usb_debug "ACTION: $ACTION, PRODUCT: $PRODUCT"
+#
+# Periksa jika module wwan pada hat terhubung dengan Vendor ID tertentu dan dengan ACTION == "add", "change", atau "remove"
+if [[ "$ACTION" == "add" || "$ACTION" == "change" || "$ACTION" == "remove" ]] && \
+   [[ "$(echo $PRODUCT | cut -d'/' -f1)" == "2cb7" || \
+      "$(echo $PRODUCT | cut -d'/' -f1)" == "1199" || \
+      "$(echo $PRODUCT | cut -d'/' -f1)" == "8087" || \
+      "$(echo $PRODUCT | cut -d'/' -f1)" == "413c" || \
+      "$(echo $PRODUCT | cut -d'/' -f1)" == "1bc7" || \
+      "$(echo $PRODUCT | cut -d'/' -f1)" == "2c7c" || \
+      "$(echo $PRODUCT | cut -d'/' -f1)" == "3f0" || \
+      "$(echo $PRODUCT | cut -d'/' -f1)" == "489" || \
+      "$(echo $PRODUCT | cut -d'/' -f1)" == "5c6" || \
+      "$(echo $PRODUCT | cut -d'/' -f1)" == "e8d" ]]; then
+      # Note: Jika ingin menambahkan VID dan terdapat angka nol (0) di depan, pastikan untuk menghapus angka nol tersebut.
+      # Contoh: 0e8d menjadi e8d
+      # VID = -f1
+      # PID = -f2
+      
+   # Mengambil nama interface WAN berdasarkan proto modemmanager
+   mm_modemIface=$(uci show network | grep "proto='modemmanager'" | awk -F '.' '{print $2}')
+        
+   # Mengambil nama interface WAN berdasarkan proto atc
+   atc_modemIface=$(uci show network | grep "proto='atc'" | awk -F '.' '{print $2}')
+        
+   # Mengambil nama interface WAN berdasarkan proto xmm
+   xmm_modemIface=$(uci show network | grep "proto='xmm'" | awk -F '.' '{print $2}')
+   
+    # Fungsi untuk mengatur port serial wwan menggunakan uci
+    set_port_serial(){
+        # Mengatur port serial wwan untuk 3ginfo, atcommands, modemband, modeminfo, dan sms_tool_js
+        uci set 3ginfo.@3ginfo[0].device="$1"
+        uci set atcommands.@atcommands[0].set_port="$1"
+        uci set modemband.@modemband[0].set_port="$1"
+        uci set modeminfo.@modeminfo[0].device="$1"
+        uci set sms_tool_js.@sms_tool_js[0].readport="$1"
+        uci set sms_tool_js.@sms_tool_js[0].sendport="$1"
+        uci set sms_tool_js.@sms_tool_js[0].ussdport="$1"
+        uci set sms_tool_js.@sms_tool_js[0].atport="$1"
+        uci -q commit 3ginfo
+        uci -q commit atcommands
+        uci -q commit modemband.@modemband[0]
+        uci -q commit modeminfo
+        uci -q commit sms_tool_js
+    }
+    
+    set_led_hat(){ 
+        # Mengatur LED INET pada HAT Opiz
+        uci set system.@led[0].dev="$1"
+        uci -q commit system
+	      service led restart
+    }
+    
+    set_proto_atc(){
+        uci set network.atc.disabled="0"
+        uci set network.mm.disabled="1"
+        uci set network.xmm.disabled="1"
+        uci -q commit network
+                
+        if [[ "$(ifstatus $atc_modemIface | grep '"up":' | awk -F': ' '{print $2}' | tr -d ',')" == "false" ]]; then
+          logger -t usb_wwan_hat "Upkan interface $atc_modemIface"
+          ifdown $atc_modemIface
+          sleep 1
+          ifup $atc_modemIface
+        fi
+    }
+    
+    set_proto_mm(){
+        uci set network.atc.disabled="1"
+        uci set network.mm.disabled="0"
+        uci set network.xmm.disabled="1"
+        uci -q commit network
+        
+        if [[ "$(ifstatus $mm_modemIface | grep '"up":' | awk -F': ' '{print $2}' | tr -d ',')" == "false" ]]; then
+          logger -t usb_wwan_hat "Upkan interface $mm_modemIface"
+          ifup $mm_modemIface
+        fi
+    }
+    
+    set_proto_xmm(){
+        uci set network.atc.disabled="1"
+        uci set network.mm.disabled="1"
+        uci set network.xmm.disabled="0"
+        uci -q commit network
+                
+        if [[ "$(ifstatus $xmm_modemIface | grep '"up":' | awk -F': ' '{print $2}' | tr -d ',')" == "false" ]]; then
+          logger -t usb_wwan_hat "Upkan interface $xmm_modemIface"
+          ifup $xmm_modemIface
+        fi
+    }
+    
+    # Fungsi untuk setup kebutuhan module wwan berdasarkan VID
+    setup_wwan(){
+        VID="$1"
+    
+        case "$VID" in
+            "1199") # EM7430 / EM7455
+                set_port_serial "/dev/ttyUSB1"
+                set_led_hat "wwan0"
+                sed -i 's/^# \(mm_log "info" .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^# \(mm_report_event .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_mm
+                ;;
+            "2c7c") # RM5XX Series
+                set_port_serial "/dev/ttyUSB2"
+                set_led_hat "wwan0"
+                sed -i 's/^# \(mm_log "info" .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^# \(mm_report_event .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_mm
+                ;;
+            "3f0")  # LT4220
+                set_port_serial "/dev/ttyUSB2"
+                set_led_hat "wwan0"
+                sed -i 's/^# \(mm_log "info" .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^# \(mm_report_event .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_mm
+                ;;
+            "2cb7") # L850
+                set_port_serial "/dev/ttyACM0"
+                set_led_hat "wwan0"
+                sed -i 's/^# \(mm_log "info" .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^# \(mm_report_event .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_mm
+                ;;
+            "8087") # L860
+                set_port_serial "/dev/ttyACM0"
+                set_led_hat "eth1"
+                sed -i 's/^# \(mm_log "info" .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^# \(mm_report_event .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_xmm
+                ;;
+            "413c") # DW5821e
+                set_port_serial "/dev/ttyUSB0"
+                set_led_hat "wwan0"
+                sed -i 's/^# \(mm_log "info" .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^# \(mm_report_event .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_mm
+                ;;
+            "1bc7") # LN940 (LT4220)
+                set_port_serial "/dev/ttyUSB0"
+                set_led_hat "wwan0"
+                sed -i 's/^# \(mm_log "info" .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^# \(mm_report_event .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_mm
+                ;;
+            "489")  # 
+                set_port_serial "/dev/ttyUSB0"
+                set_led_hat "wwan0"
+                sed -i 's/^# \(mm_log "info" .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^# \(mm_report_event .*\)/\1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_mm
+                ;;
+            "5c6")  # T99W175
+                set_port_serial "/dev/ttyUSB3"
+                # Disable modemmanager to fix looping issue
+                sed -i 's/^\(mm_log "info" .*\)/# \1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^\(mm_report_event .*\)/# \1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_mm
+                ;;
+            "e8d")  # FM350-GL
+                set_port_serial "/dev/ttyUSB4"
+                set_led_hat "eth1"
+                # Disable modemmanager untuk FM350
+                sed -i 's/^\(mm_log "info" .*\)/# \1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                sed -i 's/^\(mm_report_event .*\)/# \1/' /etc/hotplug.d/tty/25-modemmanager-tty
+                set_proto_atc
+                ;;
+            *)
+                logger -t usb_wwan_hat "VID tidak dikenal!!!"
+                ;;
+        esac
+    }      
+      
+    # Cek jika file status tidak ada, baru eksekusi script
+    if [[ ! -f /tmp/wwan_modem_hat.status ]]; then
+        # Tampung vid wwan
+        vid_wwan="$(echo $PRODUCT | cut -d'/' -f1)"
+
+        # Tampung path usb wwan dan tambahkan /sys
+        device_path="/sys${DEVPATH}"
+        
+        # Mendapatkan versi kernel
+        #kernel_ver=$(uname -r | cut -d'-' -f1)
+
+        # Jika path perangkat ditemukan
+        if [ -n "$device_path" ]; then
+            # Tulis Log event untuk debugging
+            logger -t usb_wwan_hat "Device matched, proceeding with configuration."
+            logger -t usb_wwan_hat "ACTION: $ACTION, PRODUCT: $PRODUCT"
+
+            # Tulis log status perangkat
+            logger -t usb_wwan_hat "Device path for PRODUCT ${PRODUCT} set to ${device_path}"
+            
+            # Update path USB untuk modul WWAN
+            uci set network."$mm_modemIface".device="$device_path"
+            #uci -q commit network
+ 
+            # Membandingkan versi kernel
+#            if [[ "$(echo -e "$kernel_ver\n6.6" | sort -V | head -n1)" != "6.6" && "$ACTION" == "add" ]]; then
+#                # Jika dibawah 6 maka add module wwan ke driver option1
+#                #modprobe option
+#                
+#                # Untuk mengaktifkan Serial USB T99W175 >=> Mode Microsoft AT^CUSTOMER=0 AT+USBSWITCH=90D5
+#                if [[ "$(echo $PRODUCT | cut -d'/' -f1)" == "5c6" ]]; then
+#                    # Tunggu 20 detik di background agar driver terload dan lanjutkan dengan bind usb vid:pid ke option1
+#                    sleep 20 && echo '05c6 90d5' > /sys/bus/usb-serial/drivers/option1/new_id &
+#
+#                    if [[ "$(ifstatus mm | grep '"up":' | awk -F': ' '{print $2}' | tr -d ',')" == "false" ]]; then
+#                      sleep 10 # Tunggu 10 detik agar bind usb vid:pid ke option1 selesai
+#                      #usbreset 05c6:90d5
+#                      ifup $mm_modemIface
+#                    fi
+#                fi
+#                
+#                # Untuk mengaktifkan serial USB FM350 >=> Mode Fibocom AT+GTUSBMODE=41
+#                if [[ "$(echo $PRODUCT | cut -d'/' -f1)" == "e8d" ]]; then
+#                    # Tunggu 6 detik di background agar driver terload dan lanjutkan dengan bind usb vid:pid ke option1
+#                    sleep 6 && echo '0e8d 7127' > /sys/bus/usb-serial/drivers/option1/new_id &
+#                    
+#                    if [[ "$(ifstatus mm | grep '"up":' | awk -F': ' '{print $2}' | tr -d ',')" == "false" ]]; then
+#                      sleep 3 # Tunggu 3 detik agar bind usb vid:pid ke option1 selesai
+#                      usbreset 0e8d:7127
+#                      ifup $mm_modemIface
+#                    fi
+#                fi
+#            fi
+
+
+#            if [[ "$(echo $PRODUCT | cut -d'/' -f1)" == "e8d" ]]; then # Fix restart WWAN FM350-GL via tombol HAT
+#              ifdown $atc_modemIface
+#            fi
+            
+            # Panggil function setup_wwan untuk setup kebutuhan beberapa konfigurasi wwan
+            setup_wwan $vid_wwan
+            
+#            if [[ "$(ifstatus $mm_modemIface | grep '"up":' | awk -F': ' '{print $2}' | tr -d ',')" == "false" ]]; then
+#              logger -t usb_wwan_hat "Upkan interface $mm_modemIface"
+#              ifup $mm_modemIface
+#              #  echo "UPPPP" > /tmp/upbro.status
+#            fi
+            
+            # Menulis status modem
+            logger -t usb_wwan_hat "Device configuration completed, writing status to /tmp/wwan_modem_hat.status"
+            echo "$vid_wwan" > /tmp/wwan_modem_hat.status
+        fi
+    fi
+    
+    # Jika file /tmp/wwan_modem_hat.status ada dan aksi adalah 'remove' maka menghapus file status
+    if [[ -f /tmp/wwan_modem_hat.status && "$ACTION" == "remove" ]]; then
+        logger -t usb_wwan_hat "Removing /tmp/wwan_modem_hat.status due to device removal."
+        rm -f /tmp/wwan_modem_hat.status
+    fi
+fi

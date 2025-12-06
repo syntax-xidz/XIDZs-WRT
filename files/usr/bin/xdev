@@ -1,0 +1,1724 @@
+#!/bin/bash
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+NC='\033[0m'
+
+OPKG_UPDATED=false
+INSTALL_SUCCESS=false
+CORE_VERSION_TYPE="latest"
+
+PASSWALL_PACKAGES=(
+    "microsocks"
+    "dns2socks" 
+    "ipt2socks"
+    "tcping"
+    "chinadns-ng"
+    "xray-core"
+    "sing-box"
+    "xray-plugin"
+    "naiveproxy"
+    "trojan-plus"
+    "tuic-client"
+    "luci-app-passwall"
+)
+
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+log_blue() { echo -e "${BLUE}[INFO]${NC} $1"; }
+
+show_banner() {
+    clear
+    echo -e "${CYAN}=========================================="
+    echo -e "           ${MAGENTA}XDevTools${CYAN}"
+    echo -e "     ${YELLOW}VERSION 1.5${NC} | ${GREEN}CREATED BY FIDZ${CYAN}"
+    echo -e "==========================================${NC}"
+}
+
+show_menu() {
+    show_banner
+    echo ""
+    if [ -n "$VEROP" ] && [ -n "$ARCH" ]; then
+        echo "OpenWRT: $VEROP | Arsitektur: $ARCH"
+        echo "Target: $ARCH_3"
+        if [ "$OPKG_UPDATED" = true ]; then
+            echo -e "${GREEN}Status: packages sudah diperbarui ✓${NC}"
+        else
+            echo -e "${YELLOW}Status: packages belum diperbarui${NC}"
+        fi
+    else
+        echo -e "${CYAN}Mendukung: x86_64, i386 & aarch64${NC}"
+    fi
+    echo ""
+    echo "INSTALASI:"
+    echo "  1) OpenClash"
+    echo "  2) PassWall"
+    echo "  3) Nikki"
+    echo "  4) OpenClash + Nikki"
+    echo "  5) PassWall + Nikki"
+    echo "  6) OpenClash + PassWall"
+    echo "  7) Install Semua"
+    echo ""
+    echo "CORE:"
+    echo "  10) Download OpenClash Core"
+    echo "  11) Download Nikki Core"
+    echo ""
+    echo "OTHER TOOLS:"
+    echo "  12) Install Bandix"
+    echo "  13) Install Netmonitor"
+    echo ""
+    echo "UNINSTALL:"
+    echo "  8) Uninstall Tunnels & Tools"
+    echo ""
+    echo "  0) Keluar"
+    echo ""
+    echo -n "Pilih [0-13]: "
+}
+
+select_openwrt_version() {
+    echo ""
+    log_blue "Pilih versi OpenWRT:"
+    echo ""
+    echo "  1) 23.05"
+    echo "  2) 24.10"
+    echo ""
+    echo -n "Pilih [1-2]: "
+    read version_choice
+    
+    case $version_choice in
+        1) VEROP="23.05" ;;
+        2) VEROP="24.10" ;;
+        *)
+            log_warn "Pilihan salah, menggunakan versi 23.05"
+            VEROP="23.05"
+            ;;
+    esac
+    
+    log_info "Versi OpenWRT: $VEROP"
+}
+
+select_architecture() {
+    echo ""
+    log_blue "Pilih arsitektur sistem:"
+    echo ""
+    echo "  1) x86_64"
+    echo "  2) i386_pentium4"
+    echo "  3) aarch64_cortex-a53"
+    echo "  4) aarch64_cortex-a72"
+    echo "  5) aarch64_cortex-a76"
+    echo "  6) aarch64_generic"
+    echo ""
+    echo -n "Pilih [1-6]: "
+    read arch_choice
+    
+    case $arch_choice in
+        1)
+            ARCH="x86_64"
+            ARCH_1="amd64"
+            ARCH_2="x86_64"
+            ARCH_3="x86_64"
+            ;;
+        2)
+            ARCH="i386"
+            ARCH_1="386"
+            ARCH_2="i386"
+            ARCH_3="i386_pentium4"
+            ;;
+        3)
+            ARCH="aarch64"
+            ARCH_1="arm64"
+            ARCH_2="aarch64"
+            ARCH_3="aarch64_cortex-a53"
+            ;;
+        4)
+            ARCH="aarch64"
+            ARCH_1="arm64"
+            ARCH_2="aarch64"
+            ARCH_3="aarch64_cortex-a72"
+            ;;
+        5)
+            ARCH="aarch64"
+            ARCH_1="arm64"
+            ARCH_2="aarch64"
+            ARCH_3="aarch64_cortex-a76"
+            ;;
+        6)
+            ARCH="aarch64"
+            ARCH_1="arm64"
+            ARCH_2="aarch64"
+            ARCH_3="aarch64_generic"
+            ;;
+        *)
+            log_error "Pilihan arsitektur tidak valid"
+            exit 1
+            ;;
+    esac
+    
+    log_info "Konfigurasi arsitektur:"
+    echo "  - ARCH: $ARCH"
+    echo "  - Mihomo: $ARCH_1"
+    echo "  - OpenWRT: $ARCH_3"
+}
+
+select_core_version() {
+    echo ""
+    log_blue "Pilih versi Mihomo Core:"
+    echo ""
+    echo "  1) Latest Release (Stabil)"
+    echo "  2) Alpha Release (Pre-release)"
+    echo ""
+    echo -n "Pilih [1-2]: "
+    read core_choice
+    
+    case $core_choice in
+        1) 
+            CORE_VERSION_TYPE="latest"
+            log_info "Menggunakan Latest Release"
+            ;;
+        2) 
+            CORE_VERSION_TYPE="alpha"
+            log_info "Menggunakan Alpha Release"
+            ;;
+        *)
+            log_warn "Pilihan salah, menggunakan Latest Release"
+            CORE_VERSION_TYPE="latest"
+            ;;
+    esac
+}
+
+repair_opkg_database() {
+    log_info "Memeriksa database OPKG..."
+    
+    if [ -f /usr/lib/opkg/status ]; then
+        if [ "$(tail -c1 /usr/lib/opkg/status | wc -l)" -eq 0 ]; then
+            log_warn "Memperbaiki file status"
+            echo "" >> /usr/lib/opkg/status
+        fi
+        
+        log_info "Membersihkan database rusak"
+        sed -i '/^Package: $/d' /usr/lib/opkg/status 2>/dev/null
+        sed -i '/^Version: $/d' /usr/lib/opkg/status 2>/dev/null
+    fi
+    
+    if [ "$OPKG_UPDATED" = false ]; then
+        log_info "Memperbarui database packages..."
+        if opkg update >/dev/null 2>&1; then
+            log_info "Database packages berhasil diperbarui"
+            OPKG_UPDATED=true
+        else
+            log_warn "Gagal memperbarui database"
+        fi
+    fi
+}
+
+update_package_list_once() {
+    if [ "$OPKG_UPDATED" = false ]; then
+        log_info "Memperbarui database packages..."
+        if opkg update >/dev/null 2>&1; then
+            log_info "Database packages berhasil diperbarui"
+            OPKG_UPDATED=true
+        else
+            log_warn "Gagal memperbarui database"
+        fi
+    fi
+}
+
+is_package_installed() {
+    local pkg_name="$1"
+    
+    if opkg list-installed 2>/dev/null | grep -q "^$pkg_name "; then
+        return 0
+    fi
+    
+    case "$pkg_name" in
+        luci-app-openclash)
+            if [ -f /etc/config/openclash ] || [ -d /usr/lib/lua/luci/controller/openclash ]; then
+                return 0
+            fi
+            ;;
+        luci-app-passwall)
+            if [ -f /etc/config/passwall ] || [ -d /usr/lib/lua/luci/controller/passwall ]; then
+                return 0
+            fi
+            ;;
+        luci-app-nikki)
+            if [ -f /etc/config/nikki ] || [ -d /usr/lib/lua/luci/controller/nikki ]; then
+                return 0
+            fi
+            ;;
+        luci-app-bandix)
+            if [ -f /etc/config/bandix ] || [ -d /usr/lib/lua/luci/controller/bandix ]; then
+                return 0
+            fi
+            ;;
+        luci-app-netmonitor)
+            if [ -f /etc/config/netmonitor ] || [ -d /usr/lib/lua/luci/controller/netmonitor ]; then
+                return 0
+            fi
+            ;;
+    esac
+    
+    return 1
+}
+
+get_related_packages() {
+    local main_pkg="$1"
+    local related_pkgs=()
+    
+    case "$main_pkg" in
+        luci-app-openclash)
+            related_pkgs+=("$main_pkg")
+            while IFS= read -r pkg; do
+                [[ "$pkg" =~ openclash ]] && [[ "$pkg" != "$main_pkg" ]] && related_pkgs+=("$pkg")
+            done < <(opkg list-installed 2>/dev/null | awk '{print $1}' | grep -i openclash)
+            ;;
+        luci-app-passwall)
+            related_pkgs+=("$main_pkg")
+            while IFS= read -r pkg; do
+                if [[ "$pkg" =~ passwall ]] && [[ "$pkg" != "$main_pkg" ]]; then
+                    related_pkgs+=("$pkg")
+                fi
+            done < <(opkg list-installed 2>/dev/null | awk '{print $1}' | grep -i passwall)
+            ;;
+        luci-app-nikki)
+            related_pkgs+=("$main_pkg")
+            while IFS= read -r pkg; do
+                if [[ "$pkg" =~ ^nikki ]] && [[ "$pkg" != "luci-app-nikki" ]]; then
+                    related_pkgs+=("$pkg")
+                fi
+            done < <(opkg list-installed 2>/dev/null | awk '{print $1}' | grep nikki)
+            ;;
+        luci-app-bandix)
+            related_pkgs+=("$main_pkg")
+            while IFS= read -r pkg; do
+                if [[ "$pkg" =~ ^bandix ]] && [[ "$pkg" != "luci-app-bandix" ]]; then
+                    related_pkgs+=("$pkg")
+                fi
+            done < <(opkg list-installed 2>/dev/null | awk '{print $1}' | grep bandix)
+            ;;
+        luci-app-netmonitor)
+            related_pkgs+=("$main_pkg")
+            while IFS= read -r pkg; do
+                if [[ "$pkg" =~ netmonitor ]] && [[ "$pkg" != "luci-app-netmonitor" ]]; then
+                    related_pkgs+=("$pkg")
+                fi
+            done < <(opkg list-installed 2>/dev/null | awk '{print $1}' | grep netmonitor)
+            ;;
+    esac
+    
+    printf '%s\n' "${related_pkgs[@]}" | sort -u
+}
+
+check_dependencies() {
+    log_info "Memeriksa dependensi..."
+    
+    local deps=("curl" "wget" "gzip" "unzip" "tar")
+    local missing_deps=()
+    
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            missing_deps+=("$dep")
+        fi
+    done
+    
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        log_warn "Dependensi kurang: ${missing_deps[*]}"
+        
+        log_info "Menginstall dependensi..."
+        for dep in "${missing_deps[@]}"; do
+            opkg install "$dep" >/dev/null 2>&1
+        done
+        
+        log_info "Dependensi berhasil diinstall"
+    else
+        log_info "Semua dependensi sudah terpenuhi"
+    fi
+}
+
+install_package_simple() {
+    local pkg_file="$1"
+    local pkg_name=$(basename "$pkg_file")
+    
+    log_info "Menginstall: $pkg_name"
+    
+    if opkg install "$pkg_file" 2>/dev/null; then
+        log_info "✓ Berhasil install: $pkg_name"
+        return 0
+    else
+        log_error "✗ Gagal install: $pkg_name"
+        return 1
+    fi
+}
+
+uninstall_package_with_fallback() {
+    local pkg_name="$1"
+    
+    log_info "Menghapus: $pkg_name"
+    
+    if opkg remove "$pkg_name" 2>/dev/null; then
+        log_info "✓ Berhasil hapus: $pkg_name"
+        return 0
+    else
+        log_warn "Hapus normal gagal, coba force mode"
+        if opkg remove --force-depends "$pkg_name" 2>/dev/null; then
+            log_info "✓ Berhasil hapus dengan force: $pkg_name"
+            return 0
+        else
+            log_error "✗ Gagal hapus: $pkg_name"
+            return 1
+        fi
+    fi
+}
+
+download_file() {
+    local url="$1"
+    local output="$2"
+    
+    if [ -z "$url" ]; then
+        log_error "URL download kosong"
+        return 1
+    fi
+    
+    log_info "Mendownload: $(basename $output)"
+    
+    if command -v wget &> /dev/null; then
+        wget --no-check-certificate -q --show-progress -O "$output" "$url" 2>&1
+    else
+        curl -L --insecure -# -o "$output" "$url" 2>&1
+    fi
+    
+    if [ $? -eq 0 ] && [ -f "$output" ] && [ -s "$output" ]; then
+        log_info "Download selesai: $(basename $output) ($(du -h $output | cut -f1))"
+        return 0
+    else
+        log_error "Download gagal: $(basename $output)"
+        [ -f "$output" ] && rm -f "$output"
+        return 1
+    fi
+}
+
+download_mihomo_core() {
+    local target_path="$1"
+    local app_name="$2"
+    
+    log_blue "=========================================="
+    log_blue "    DOWNLOAD MIHOMO CORE - $app_name"
+    log_blue "=========================================="
+    
+    mkdir -p "$(dirname "$target_path")"
+    
+    case "${ARCH_3}" in
+        "x86_64")
+            meta_file="mihomo-linux-amd64-compatible"
+            ;;
+        "i386_pentium4")
+            meta_file="mihomo-linux-386"
+            ;;
+        "aarch64"*|"arm64")
+            meta_file="mihomo-linux-arm64"
+            ;;
+        *)
+            log_error "Arsitektur tidak didukung: ${ARCH_3}"
+            return 1
+            ;;
+    esac
+    
+    log_info "Target: $target_path"
+    log_info "Arsitektur: ${ARCH_3} → $meta_file"
+    log_info "Versi: ${CORE_VERSION_TYPE^^}"
+    
+    if [ -f "$target_path" ]; then
+        log_info "Menghapus core lama"
+        rm -f "$target_path"
+    fi
+    
+    local mihomo_core_url=""
+    local version_info=""
+    
+    if [ "$CORE_VERSION_TYPE" = "alpha" ]; then
+        log_info "Mengambil versi Alpha..."
+        mihomo_core_url=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/tags/Prerelease-Alpha" | grep "browser_download_url" | grep -oE "https.*${meta_file}-alpha-[a-zA-Z0-9]+\.gz" | head -n 1)
+        version_info=$(echo "$mihomo_core_url" | grep -oE "alpha-[a-zA-Z0-9]+")
+    else
+        log_info "Mengambil versi Latest..."
+        mihomo_core_url=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep "browser_download_url" | grep -oE "https.*${meta_file}-v[0-9]+\.[0-9]+\.[0-9]+\.gz" | head -n 1)
+        version_info=$(echo "$mihomo_core_url" | grep -oE "v[0-9]+\.[0-9]+\.[0-9]+")
+    fi
+    
+    if [ -z "$mihomo_core_url" ]; then
+        log_error "Gagal mendapatkan URL download"
+        return 1
+    fi
+    
+    log_info "Versi Mihomo: $version_info"
+    
+    download_file "$mihomo_core_url" "/tmp/mihomo_core.gz" || return 1
+    
+    log_info "Mengekstrak file..."
+    if gzip -d /tmp/mihomo_core.gz 2>/dev/null; then
+        log_info "File berhasil diekstrak"
+    else
+        log_error "Gagal ekstrak file"
+        return 1
+    fi
+    
+    if [ ! -f /tmp/mihomo_core ]; then
+        log_error "File ekstrak tidak ditemukan"
+        return 1
+    fi
+    
+    log_info "Memindahkan core ke: $target_path"
+    mv /tmp/mihomo_core "$target_path"
+    
+    log_info "Setting permission..."
+    chmod 755 "$target_path"
+    
+    if [ -f "$target_path" ] && [ -x "$target_path" ]; then
+        local file_size=$(du -h "$target_path" | cut -f1)
+        log_info "✓ Mihomo Core berhasil diinstall"
+        log_info "  - Lokasi: $target_path"
+        log_info "  - Ukuran: $file_size"
+        log_info "  - Versi: $version_info (${CORE_VERSION_TYPE^^})"
+        return 0
+    else
+        log_error "✗ Gagal install Mihomo Core"
+        return 1
+    fi
+}
+
+download_openclash_core() {
+    show_banner
+    echo ""
+    log_blue "=========================================="
+    log_blue "   DOWNLOAD OPENCLASH CORE"
+    log_blue "=========================================="
+    
+    select_architecture
+    select_core_version
+    
+    echo ""
+    download_mihomo_core "/etc/openclash/core/clash_meta" "OPENCLASH"
+}
+
+download_nikki_core() {
+    show_banner
+    echo ""
+    log_blue "=========================================="
+    log_blue "      DOWNLOAD NIKKI CORE"
+    log_blue "=========================================="
+    
+    select_architecture
+    select_core_version
+    
+    echo ""
+    download_mihomo_core "/usr/bin/mihomo" "NIKKI"
+}
+
+restart_services() {
+    echo ""
+    log_blue "=========================================="
+    log_blue "   POST-INSTALLATION SERVICES"
+    log_blue "=========================================="
+    
+    log_info "Restarting uhttpd service..."
+    if /etc/init.d/uhttpd restart 2>/dev/null; then
+        log_info "uhttpd restarted successfully"
+    else
+        log_warn "Failed to restart uhttpd"
+    fi
+    
+    if [ -f /sbin/free.sh ]; then
+        log_info "Running /sbin/free.sh..."
+        if bash /sbin/free.sh 2>/dev/null; then
+            log_info "/sbin/free.sh executed successfully"
+        else
+            log_warn "Failed to execute /sbin/free.sh"
+        fi
+    else
+        log_warn "/sbin/free.sh not found, skipping..."
+    fi
+    
+    echo ""
+}
+
+select_openclash_repo() {
+    echo ""
+    log_blue "Select OpenClash repository:"
+    echo ""
+    echo "  1) vernesong (Official)"
+    echo "  2) de-quenx (Modified)"
+    echo ""
+    echo -n "Enter choice [1-2]: "
+    read repo_choice
+    
+    openclash_file_ipk="luci-app-openclash"
+    
+    case $repo_choice in
+        1)
+            log_info "Repository: vernesong (Official)"
+            OPENCLASH_REPO="https://api.github.com/repos/vernesong/OpenClash/releases"
+            ;;
+        2)
+            log_info "Repository: de-quenx (Modified)"
+            OPENCLASH_REPO="https://api.github.com/repos/de-quenx/OpenClash-x/releases"
+            ;;
+        *)
+            log_warn "Invalid choice, using Official"
+            OPENCLASH_REPO="https://api.github.com/repos/vernesong/OpenClash/releases"
+            ;;
+    esac
+}
+
+install_openclash() {
+    log_blue "=========================================="
+    log_blue "      INSTALLING OPENCLASH"
+    log_blue "=========================================="
+    
+    select_openclash_repo
+    
+    mkdir -p /tmp/openclash /etc/openclash/core
+    
+    log_info "Fetching OpenClash IPK URL..."
+    
+    if [[ "$OPENCLASH_REPO" == *"vernesong"* ]]; then
+        log_info "Searching in Official repository (all releases)..."
+        openclash_ipk_url=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases" | grep "browser_download_url" | grep -oE "https.*${openclash_file_ipk}.*.ipk" | head -n 1)
+    else
+        log_info "Searching in Modified repository..."
+        openclash_ipk_url=$(curl -s "$OPENCLASH_REPO" | grep "browser_download_url" | grep -oE "https.*${openclash_file_ipk}.*.ipk" | head -n 1)
+    fi
+    
+    if [ -z "$openclash_ipk_url" ]; then
+        log_warn "IPK not found, trying alternative repository..."
+        if [[ "$OPENCLASH_REPO" == *"vernesong"* ]]; then
+            openclash_ipk_url=$(curl -s "https://api.github.com/repos/de-quenx/OpenClash-x/releases" | grep "browser_download_url" | grep -oE "https.*${openclash_file_ipk}.*.ipk" | head -n 1)
+        else
+            openclash_ipk_url=$(curl -s "https://api.github.com/repos/vernesong/OpenClash/releases" | grep "browser_download_url" | grep -oE "https.*${openclash_file_ipk}.*.ipk" | head -n 1)
+        fi
+    fi
+    
+    if [ -z "$openclash_ipk_url" ]; then
+        log_error "Failed to get OpenClash IPK URL from both repositories"
+        log_error "Please check your internet connection or try again later"
+        return 1
+    fi
+    
+    download_file "$openclash_ipk_url" "/tmp/openclash/openclash.ipk" || return 1
+    
+    echo ""
+    log_blue "Install Mihomo Core untuk OpenClash?"
+    echo ""
+    echo "  1) Ya - Download dan install core"
+    echo "  2) Tidak - Skip install core"
+    echo ""
+    echo -e "${YELLOW}Auto-pilih 'Ya' dalam 5 detik...${NC}"
+    echo ""
+    echo -n "Pilih [1-2]: "
+    
+    local install_core=true
+    if read -t 5 core_choice; then
+        echo ""
+        if [ "$core_choice" = "2" ]; then
+            install_core=false
+            log_info "Skip install Mihomo Core"
+        else
+            log_info "Install Mihomo Core"
+        fi
+    else
+        echo ""
+        log_info "Auto-pilih: Install Mihomo Core"
+    fi
+    
+    if [ "$install_core" = true ]; then
+        log_info "Fetching Mihomo Core..."
+        if [[ "${ARCH_3}" == "x86_64" ]]; then
+            meta_file="mihomo-linux-${ARCH_1}-compatible"
+        else
+            meta_file="mihomo-linux-${ARCH_1}"
+        fi
+        
+        local mihomo_core_url=""
+        local version_info=""
+        
+        if [ "$CORE_VERSION_TYPE" = "alpha" ]; then
+            mihomo_core_url=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/tags/Prerelease-Alpha" | grep "browser_download_url" | grep -oE "https.*${meta_file}-alpha-[a-zA-Z0-9]+\.gz" | head -n 1)
+            version_info=$(echo "$mihomo_core_url" | grep -oE "alpha-[a-zA-Z0-9]+")
+        else
+            mihomo_core_url=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep "browser_download_url" | grep -oE "https.*${meta_file}-v[0-9]+\.[0-9]+\.[0-9]+\.gz" | head -n 1)
+            version_info=$(echo "$mihomo_core_url" | grep -oE "v[0-9]+\.[0-9]+\.[0-9]+")
+        fi
+        
+        if [ -z "$mihomo_core_url" ]; then
+            log_error "Failed to get Mihomo Core for ${meta_file}"
+            log_warn "Lanjutkan install tanpa core"
+        else
+            log_info "Mihomo Core version: $version_info (${CORE_VERSION_TYPE^^})"
+            
+            if download_file "$mihomo_core_url" "/tmp/openclash/clash_meta.gz"; then
+                log_info "Extracting Mihomo Core..."
+                if gzip -d /tmp/openclash/clash_meta.gz 2>/dev/null; then
+                    mv /tmp/openclash/clash_meta /etc/openclash/core/
+                    chmod +x /etc/openclash/core/clash_meta
+                    log_info "Mihomo Core installed with executable permission"
+                else
+                    log_warn "Gagal ekstrak core, lanjutkan tanpa core"
+                fi
+            else
+                log_warn "Gagal download core, lanjutkan tanpa core"
+            fi
+        fi
+    fi
+    
+    echo ""
+    update_package_list_once
+    echo ""
+    
+    log_info "Installing OpenClash IPK..."
+    if install_package_simple "/tmp/openclash/openclash.ipk"; then
+        log_info "OpenClash installed successfully"
+        rm -rf /tmp/openclash
+        INSTALL_SUCCESS=true
+        return 0
+    else
+        log_error "Failed to install OpenClash"
+        return 1
+    fi
+}
+
+filter_passwall_packages() {
+    local source_dir="$1"
+    local filtered_dir="$2"
+    
+    mkdir -p "$filtered_dir"
+    
+    log_info "Filtering PassWall packages..."
+    log_info "Required packages: ${PASSWALL_PACKAGES[*]}"
+    echo ""
+    
+    local found_packages=()
+    local missing_packages=()
+    
+    for required_pkg in "${PASSWALL_PACKAGES[@]}"; do
+        local found=false
+        
+        for ipk_file in "$source_dir"/*.ipk; do
+            if [ -f "$ipk_file" ]; then
+                local filename=$(basename "$ipk_file")
+                
+                if [[ "$filename" == "${required_pkg}_"* ]] || [[ "$filename" == "${required_pkg}.ipk" ]] || [[ "$filename" == "${required_pkg}-"* ]]; then
+                    cp "$ipk_file" "$filtered_dir/"
+                    found_packages+=("$filename")
+                    found=true
+                    log_info "✓ Found: $filename"
+                    break
+                fi
+            fi
+        done
+        
+        if [ "$found" = false ]; then
+            missing_packages+=("$required_pkg")
+            log_warn "✗ Missing: $required_pkg"
+        fi
+    done
+    
+    echo ""
+    log_info "Filter summary:"
+    log_info "  - Found: ${#found_packages[@]} packages"
+    log_info "  - Missing: ${#missing_packages[@]} packages"
+    
+    if [ ${#missing_packages[@]} -gt 0 ]; then
+        log_warn "Missing packages will be skipped: ${missing_packages[*]}"
+    fi
+    
+    return 0
+}
+
+download_latest_luci_passwall() {
+    local output_dir="$1"
+    
+    log_info "Downloading latest luci-app-passwall from GitHub..."
+    
+    local latest_release_url=$(curl -s "https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest" | grep "browser_download_url" | grep "luci-app-passwall.*_all\.ipk" | head -n 1 | cut -d '"' -f 4)
+    
+    if [ -z "$latest_release_url" ]; then
+        log_warn "Latest release not found, trying manual pattern..."
+        local tag_name=$(curl -s "https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest" | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4)
+        
+        if [ -n "$tag_name" ]; then
+            latest_release_url="https://github.com/xiaorouji/openwrt-passwall/releases/download/${tag_name}/luci-app-passwall_${tag_name}_all.ipk"
+            log_info "Trying constructed URL for tag: $tag_name"
+        else
+            log_warn "Could not determine latest tag, using fallback URL..."
+            latest_release_url="https://github.com/xiaorouji/openwrt-passwall/releases/download/25.11.15-1/luci-app-passwall_25.11.15-r1_all.ipk"
+        fi
+    fi
+    
+    local version_info=$(echo "$latest_release_url" | grep -oE "luci-app-passwall_[^/]*\.ipk" | sed 's/luci-app-passwall_//g' | sed 's/\.ipk//g')
+    log_info "Version: $version_info"
+    
+    if download_file "$latest_release_url" "${output_dir}/luci-app-passwall.ipk"; then
+        log_info "✓ Latest luci-app-passwall downloaded successfully"
+        return 0
+    else
+        log_error "✗ Failed to download luci-app-passwall"
+        return 1
+    fi
+}
+
+install_passwall() {
+    log_blue "=========================================="
+    log_blue "      INSTALLING PASSWALL"
+    log_blue "=========================================="
+    
+    mkdir -p /tmp/passwall /tmp/passwall_filtered
+    
+    log_info "Required PassWall packages:"
+    printf '  - %s\n' "${PASSWALL_PACKAGES[@]}"
+    echo ""
+    
+    log_info "Downloading PassWall dependencies from GitHub..."
+    passwall_packages_url=$(curl -s "https://api.github.com/repos/xiaorouji/openwrt-passwall/releases" | grep "browser_download_url" | grep -oE "https.*passwall_packages_ipk_${ARCH_3}.*\.zip" | head -n 1)
+    
+    if [ -z "$passwall_packages_url" ] && [[ "$ARCH_3" == "aarch64_cortex"* ]]; then
+        log_warn "Trying with aarch64_generic..."
+        passwall_packages_url=$(curl -s "https://api.github.com/repos/xiaorouji/openwrt-passwall/releases" | grep "browser_download_url" | grep -oE "https.*passwall_packages_ipk_aarch64_generic.*\.zip" | head -n 1)
+    fi
+    
+    if [ -z "$passwall_packages_url" ] && [[ "$ARCH_3" == "i386_pentium4" ]]; then
+        log_warn "i386_pentium4 not found, trying with x86_64..."
+        passwall_packages_url=$(curl -s "https://api.github.com/repos/xiaorouji/openwrt-passwall/releases" | grep "browser_download_url" | grep -oE "https.*passwall_packages_ipk_x86_64.*\.zip" | head -n 1)
+    fi
+    
+    if [ -z "$passwall_packages_url" ]; then
+        log_error "Failed to get PassWall packages from GitHub"
+        return 1
+    fi
+    
+    download_file "$passwall_packages_url" "/tmp/passwall/packages.zip" || return 1
+    
+    log_info "Extracting PassWall packages..."
+    unzip -q /tmp/passwall/packages.zip -d /tmp/passwall/
+    rm -f /tmp/passwall/packages.zip
+    
+    echo ""
+    log_info "=========================================="
+    log_info "    DOWNLOADING LATEST LUCI-APP-PASSWALL"
+    log_info "=========================================="
+    download_latest_luci_passwall "/tmp/passwall" || {
+        log_warn "Failed to download latest luci-app-passwall, continuing with filtering..."
+    }
+    
+    echo ""
+    log_info "=========================================="
+    log_info "    FILTERING REQUIRED PACKAGES ONLY"
+    log_info "=========================================="
+    
+    filter_passwall_packages "/tmp/passwall" "/tmp/passwall_filtered"
+    
+    echo ""
+    log_info "Packages selected for installation:"
+    ls -lh /tmp/passwall_filtered/*.ipk 2>/dev/null
+    
+    if [ $(ls -1 /tmp/passwall_filtered/*.ipk 2>/dev/null | wc -l) -eq 0 ]; then
+        log_error "No required packages found after filtering!"
+        return 1
+    fi
+    
+    echo ""
+    update_package_list_once
+    echo ""
+    
+    log_info "Installing filtered PassWall packages..."
+    
+    local packages_installed=0
+    local packages_failed=0
+    
+    log_info "Installing dependencies first..."
+    for ipk in /tmp/passwall_filtered/*.ipk; do
+        if [ -f "$ipk" ]; then
+            pkg_name=$(basename "$ipk")
+            
+            if [[ "$pkg_name" == luci-app-passwall* ]]; then
+                continue
+            fi
+            
+            if install_package_simple "$ipk"; then
+                ((packages_installed++))
+            else
+                ((packages_failed++))
+            fi
+        fi
+    done
+    
+    echo ""
+    log_blue "=========================================="
+    log_blue "  INSTALLING LUCI-APP-PASSWALL "
+    log_blue "=========================================="
+    
+    PASSWALL_IPK=$(find /tmp/passwall_filtered -name "luci-app-passwall*.ipk" | head -n 1)
+    
+    if [ -f "$PASSWALL_IPK" ]; then
+        local luci_version=$(basename "$PASSWALL_IPK" | sed 's/luci-app-passwall//g' | sed 's/\.ipk//g' | sed 's/^_//g')
+        log_info "Installing luci-app-passwall version: $luci_version"
+        
+        if install_package_simple "$PASSWALL_IPK"; then
+            ((packages_installed++))
+            log_info "✓ luci-app-passwall installed successfully"
+        else
+            ((packages_failed++))
+            log_error "✗ Failed to install luci-app-passwall"
+        fi
+    else
+        log_error "luci-app-passwall.ipk not found in filtered packages!"
+        ((packages_failed++))
+    fi
+    
+    echo ""
+    log_info "PassWall installation summary:"
+    log_info "  - Successfully installed: $packages_installed packages"
+    if [ $packages_failed -gt 0 ]; then
+        log_warn "  - Failed to install: $packages_failed packages"
+    fi
+    
+    if [ $packages_installed -gt 0 ]; then
+        log_info "PassWall installation completed with $packages_installed packages"
+        rm -rf /tmp/passwall /tmp/passwall_filtered
+        INSTALL_SUCCESS=true
+        return 0
+    else
+        log_error "PassWall installation failed - no packages installed"
+        return 1
+    fi
+}
+
+select_nikki_repo() {
+    echo ""
+    log_blue "Pilih repository Nikki:"
+    echo ""
+    echo "  1) nikkinikki-org (Official)"
+    echo "  2) de-quenx (Modified)"
+    echo ""
+    echo -n "Pilih [1-2]: "
+    read repo_choice
+    
+    case $repo_choice in
+        1)
+            log_info "Repository: nikkinikki-org (Official)"
+            NIKKI_REPO="https://api.github.com/repos/nikkinikki-org/OpenWrt-nikki/releases"
+            ;;
+        2)
+            log_info "Repository: de-quenx (Modified)"
+            NIKKI_REPO="https://api.github.com/repos/de-quenx/nikki-x/releases"
+            ;;
+        *)
+            log_warn "Pilihan salah, menggunakan Official"
+            NIKKI_REPO="https://api.github.com/repos/nikkinikki-org/OpenWrt-nikki/releases"
+            ;;
+    esac
+}
+
+install_nikki() {
+    log_blue "=========================================="
+    log_blue "        INSTALL NIKKI"
+    log_blue "=========================================="
+    echo ""
+    
+    select_nikki_repo
+    
+    echo ""
+    log_info "Mengambil packages Nikki..."
+    
+    mkdir -p /tmp/nikki
+    
+    local nikki_url=""
+    
+    if [[ "$NIKKI_REPO" == *"nikkinikki-org"* ]]; then
+        log_info "Menggunakan repository Official"
+        nikki_url=$(curl -s "$NIKKI_REPO/latest" | grep "browser_download_url" | grep -E "nikki.*${ARCH_3}.*\.(tar\.gz|zip)" | head -n 1 | cut -d '"' -f 4)
+        
+        if [ -z "$nikki_url" ] && [[ "$ARCH_3" == "aarch64_cortex"* ]]; then
+            log_warn "packages tidak ada, coba generic ARM64"
+            nikki_url=$(curl -s "$NIKKI_REPO/latest" | grep "browser_download_url" | grep -E "nikki.*aarch64_generic.*\.(tar\.gz|zip)" | head -n 1 | cut -d '"' -f 4)
+        fi
+    else
+        log_info "Menggunakan repository Modified"
+        nikki_url=$(curl -s "$NIKKI_REPO/latest" | grep "browser_download_url" | grep -E "nikki.*${ARCH_3}.*\.(tar\.gz|zip)" | head -n 1 | cut -d '"' -f 4)
+        
+        if [ -z "$nikki_url" ] && [[ "$ARCH_3" == "aarch64_cortex"* ]]; then
+            log_warn "packages tidak ada, coba generic ARM64"
+            nikki_url=$(curl -s "$NIKKI_REPO/latest" | grep "browser_download_url" | grep -E "nikki.*aarch64_generic.*\.(tar\.gz|zip)" | head -n 1 | cut -d '"' -f 4)
+        fi
+    fi
+    
+    if [ -z "$nikki_url" ]; then
+        log_error "Gagal mendapatkan URL untuk: $ARCH_3"
+        return 1
+    fi
+    
+    if [[ "$nikki_url" == *.tar.gz ]]; then
+        archive_file="nikki.tar.gz"
+        extract_cmd="tar -xzf"
+    elif [[ "$nikki_url" == *.zip ]]; then
+        archive_file="nikki.zip"
+        extract_cmd="unzip -q"
+    else
+        log_error "Format file tidak didukung"
+        return 1
+    fi
+    
+    if ! download_file "$nikki_url" "/tmp/nikki/$archive_file"; then
+        log_error "Gagal download Nikki"
+        return 1
+    fi
+    
+    log_info "Ekstrak packages..."
+    cd /tmp/nikki
+    if ! $extract_cmd "$archive_file" 2>/dev/null; then
+        log_error "Gagal ekstrak file"
+        cd - > /dev/null
+        return 1
+    fi
+    rm -f "$archive_file"
+    cd - > /dev/null
+    
+    echo ""
+    log_info "Memulai instalasi Nikki..."
+    
+    local packages_installed=0
+    local packages_failed=0
+    
+    log_blue "=========================================="
+    log_blue "     INSTALL NIKKI CORE"
+    log_blue "=========================================="
+    
+    NIKKI_CORE_IPK=$(find /tmp/nikki -name "nikki_*.ipk" | grep -v "luci-app-nikki" | head -n 1)
+    
+    if [ -f "$NIKKI_CORE_IPK" ]; then
+        local core_version=$(basename "$NIKKI_CORE_IPK" | sed 's/nikki_//g' | sed 's/\.ipk//g' | sed "s/_${ARCH_3}//g")
+        log_info "Install Nikki core versi: $core_version"
+        
+        if install_package_simple "$NIKKI_CORE_IPK"; then
+            ((packages_installed++))
+            log_info "✓ Nikki core berhasil diinstall"
+            
+            if [ -f "/usr/bin/mihomo" ]; then
+                chmod 755 /usr/bin/mihomo
+                local mihomo_size=$(du -h /usr/bin/mihomo | cut -f1)
+                log_info "  - Mihomo: /usr/bin/mihomo ($mihomo_size)"
+            else
+                log_warn "  - Mihomo tidak ditemukan"
+            fi
+        else
+            ((packages_failed++))
+            log_error "✗ Gagal install Nikki core"
+        fi
+    else
+        log_warn "packages Nikki core tidak ditemukan"
+        ((packages_failed++))
+    fi
+    
+    echo ""
+    log_blue "=========================================="
+    log_blue "    INSTALL LUCI-APP-NIKKI"
+    log_blue "=========================================="
+    
+    NIKKI_IPK=$(find /tmp/nikki -name "luci-app-nikki*.ipk" | head -n 1)
+    
+    if [ -f "$NIKKI_IPK" ]; then
+        local luci_version=$(basename "$NIKKI_IPK" | sed 's/luci-app-nikki//g' | sed 's/\.ipk//g')
+        log_info "Install LuCI versi: $luci_version"
+        
+        if install_package_simple "$NIKKI_IPK"; then
+            ((packages_installed++))
+            log_info "✓ LuCI Nikki berhasil diinstall"
+        else
+            ((packages_failed++))
+            log_error "✗ Gagal install LuCI Nikki"
+        fi
+    else
+        log_warn "packages LuCI Nikki tidak ditemukan"
+        ((packages_failed++))
+    fi
+    
+    echo ""
+    log_info "Hasil instalasi:"
+    log_info "  - Berhasil: $packages_installed packages"
+    if [ $packages_failed -gt 0 ]; then
+        log_warn "  - Gagal: $packages_failed packages"
+    fi
+    
+    rm -rf /tmp/nikki
+    
+    if [ $packages_installed -gt 0 ]; then
+        log_info "Nikki berhasil diinstall"
+        return 0
+    else
+        log_error "Gagal install Nikki"
+        return 1
+    fi
+}
+
+install_bandix() {
+    log_blue "=========================================="
+    log_blue "        INSTALL BANDIX TOOLS"
+    log_blue "=========================================="
+    echo ""
+    
+    mkdir -p /tmp/bandix
+    
+    log_info "Mengambil versi latest Bandix Tools dari GitHub..."
+    
+    local latest_core_release=$(curl -s "https://api.github.com/repos/timsaya/openwrt-bandix/releases/latest")
+    local latest_luci_release=$(curl -s "https://api.github.com/repos/timsaya/luci-app-bandix/releases/latest")
+    
+    if [ -z "$latest_core_release" ] || [ -z "$latest_luci_release" ]; then
+        log_error "Gagal mengambil informasi release dari GitHub"
+        return 1
+    fi
+    
+    local core_version=$(echo "$latest_core_release" | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4)
+    local luci_version=$(echo "$latest_luci_release" | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4)
+    
+    log_info "Versi latest ditemukan:"
+    log_info "  - Bandix Tools Core: $core_version"
+    log_info "  - LuCI Bandix Tools: $luci_version"
+    
+    local arch_suffix=""
+    case "${ARCH_3}" in
+        "x86_64")
+            arch_suffix="x86_64"
+            ;;
+        "aarch64"*)
+            arch_suffix="aarch64_generic"
+            ;;
+        *)
+            log_error "Arsitektur tidak didukung untuk Bandix Tools: ${ARCH_3}"
+            log_warn "Bandix Tools hanya support x86_64 dan aarch64"
+            return 1
+            ;;
+    esac
+    
+    local bandix_core_url=$(echo "$latest_core_release" | grep "browser_download_url" | grep "${arch_suffix}\.ipk" | head -n 1 | cut -d '"' -f 4)
+    local bandix_luci_url=$(echo "$latest_luci_release" | grep "browser_download_url" | grep "_all.ipk" | head -n 1 | cut -d '"' -f 4)
+    
+    if [ -z "$bandix_core_url" ]; then
+        log_error "URL Bandix Tools core tidak ditemukan untuk arsitektur: ${arch_suffix}"
+        return 1
+    fi
+    
+    if [ -z "$bandix_luci_url" ]; then
+        log_error "URL LuCI Bandix Tools tidak ditemukan"
+        return 1
+    fi
+    
+    log_info "Arsitektur target: ${ARCH_3} → ${arch_suffix}"
+    
+    local packages_installed=0
+    local packages_failed=0
+    
+    log_blue "=========================================="
+    log_blue "     DOWNLOAD BANDIX TOOLS CORE"
+    log_blue "=========================================="
+    
+    log_info "Download dari: $(basename "$bandix_core_url")"
+    
+    if ! download_file "$bandix_core_url" "/tmp/bandix/bandix-core.ipk"; then
+        log_error "Gagal download Bandix Tools core"
+        rm -rf /tmp/bandix
+        return 1
+    fi
+    
+    echo ""
+    log_blue "=========================================="
+    log_blue "     DOWNLOAD LUCI-APP-BANDIX TOOLS"
+    log_blue "=========================================="
+    
+    log_info "Download dari: $(basename "$bandix_luci_url")"
+    
+    if ! download_file "$bandix_luci_url" "/tmp/bandix/luci-app-bandix.ipk"; then
+        log_error "Gagal download LuCI Bandix Tools"
+        rm -rf /tmp/bandix
+        return 1
+    fi
+    
+    echo ""
+    update_package_list_once
+    echo ""
+    
+    log_blue "=========================================="
+    log_blue "     INSTALL BANDIX TOOLS CORE"
+    log_blue "=========================================="
+    
+    log_info "Installing Bandix Tools core $core_version (dependency)..."
+    
+    if install_package_simple "/tmp/bandix/bandix-core.ipk"; then
+        ((packages_installed++))
+        log_info "✓ Bandix Tools core $core_version berhasil diinstall"
+    else
+        ((packages_failed++))
+        log_error "✗ Gagal install Bandix Tools core"
+    fi
+    
+    echo ""
+    log_blue "=========================================="
+    log_blue "    INSTALL LUCI-APP-BANDIX TOOLS"
+    log_blue "=========================================="
+    
+    log_info "Installing LuCI Bandix Tools $luci_version..."
+    
+    if install_package_simple "/tmp/bandix/luci-app-bandix.ipk"; then
+        ((packages_installed++))
+        log_info "✓ LuCI Bandix Tools $luci_version berhasil diinstall"
+    else
+        ((packages_failed++))
+        log_error "✗ Gagal install LuCI Bandix Tools"
+    fi
+    
+    echo ""
+    log_info "Hasil instalasi Bandix Tools:"
+    log_info "  - Berhasil: $packages_installed packages"
+    log_info "  - Core version: $core_version"
+    log_info "  - LuCI version: $luci_version"
+    if [ $packages_failed -gt 0 ]; then
+        log_warn "  - Gagal: $packages_failed packages"
+    fi
+    
+    rm -rf /tmp/bandix
+    
+    if [ $packages_installed -ge 2 ]; then
+        log_info "Bandix Tools berhasil diinstall lengkap (core + luci)"
+        return 0
+    elif [ $packages_installed -eq 1 ]; then
+        log_warn "Bandix Tools terinstall sebagian (hanya core)"
+        return 1
+    else
+        log_error "Gagal install Bandix Tools"
+        return 1
+    fi
+}
+
+install_netmonitor() {
+    log_blue "=========================================="
+    log_blue "        INSTALL NETMONITOR TOOLS"
+    log_blue "=========================================="
+    echo ""
+    
+    mkdir -p /tmp/netmonitor
+    
+    log_info "Mengambil versi latest Netmonitor Tools dari GitHub..."
+    
+    local latest_release=$(curl -s "https://api.github.com/repos/de-quenx/luci-app-netmonitor/releases/latest")
+    
+    if [ -z "$latest_release" ]; then
+        log_error "Gagal mengambil informasi release dari GitHub"
+        return 1
+    fi
+    
+    local version=$(echo "$latest_release" | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4)
+    
+    log_info "Versi latest ditemukan: $version"
+    
+    local netmonitor_url=$(echo "$latest_release" | grep "browser_download_url" | grep "_all.ipk" | head -n 1 | cut -d '"' -f 4)
+    
+    if [ -z "$netmonitor_url" ]; then
+        log_error "URL Netmonitor Tools tidak ditemukan"
+        return 1
+    fi
+    
+    log_blue "=========================================="
+    log_blue "     DOWNLOAD LUCI-APP-NETMONITOR TOOLS"
+    log_blue "=========================================="
+    
+    log_info "Download dari: $(basename "$netmonitor_url")"
+    
+    if ! download_file "$netmonitor_url" "/tmp/netmonitor/luci-app-netmonitor.ipk"; then
+        log_error "Gagal download Netmonitor Tools"
+        rm -rf /tmp/netmonitor
+        return 1
+    fi
+    
+    echo ""
+    update_package_list_once
+    echo ""
+    
+    log_blue "=========================================="
+    log_blue "    INSTALL LUCI-APP-NETMONITOR TOOLS"
+    log_blue "=========================================="
+    
+    log_info "Installing Netmonitor Tools $version..."
+    
+    if install_package_simple "/tmp/netmonitor/luci-app-netmonitor.ipk"; then
+        log_info "✓ Netmonitor Tools $version berhasil diinstall"
+        rm -rf /tmp/netmonitor
+        return 0
+    else
+        log_error "✗ Gagal install Netmonitor Tools"
+        rm -rf /tmp/netmonitor
+        return 1
+    fi
+}
+
+remove_app_folders() {
+    local app="$1"
+    
+    echo ""
+    log_blue "Hapus folder dan konfigurasi $app?"
+    echo ""
+    echo "  1) Ya - Hapus semua data"
+    echo "  2) Tidak - Simpan konfigurasi"
+    echo ""
+    echo -e "${YELLOW}Auto-pilih 'Simpan' dalam 5 detik...${NC}"
+    echo ""
+    echo -n "Pilih [1-2]: "
+    
+    if read -t 5 config_choice; then
+        echo ""
+        if [ "$config_choice" = "1" ]; then
+            case "$app" in
+                luci-app-openclash)
+                    rm -rf /etc/openclash 2>/dev/null
+                    rm -f /etc/config/openclash 2>/dev/null
+                    rm -rf /usr/share/openclash 2>/dev/null
+                    log_info "Konfigurasi OpenClash Tunnel dihapus"
+                    ;;
+                luci-app-nikki)
+                    rm -f /etc/config/nikki 2>/dev/null
+                    rm -f /usr/bin/mihomo 2>/dev/null
+                    rm -rf /etc/nikki 2>/dev/null
+                    log_info "Konfigurasi Nikki Tunnel dihapus"
+                    ;;
+                luci-app-passwall)
+                    rm -f /etc/config/passwall 2>/dev/null
+                    rm -rf /usr/share/passwall 2>/dev/null
+                    rm -rf /etc/passwall 2>/dev/null
+                    log_info "Konfigurasi PassWall Tunnel dihapus"
+                    ;;
+                luci-app-bandix)
+                    rm -f /etc/config/bandix 2>/dev/null
+                    rm -rf /etc/bandix 2>/dev/null
+                    log_info "Konfigurasi Bandix Tools dihapus"
+                    ;;
+                luci-app-netmonitor)
+                    rm -f /etc/config/netmonitor 2>/dev/null
+                    rm -rf /etc/netmonitor 2>/dev/null
+                    log_info "Konfigurasi Netmonitor Tools dihapus"
+                    ;;
+            esac
+        else
+            log_info "Konfigurasi disimpan"
+        fi
+    else
+        echo ""
+        log_info "Auto-pilih: Konfigurasi disimpan"
+    fi
+}
+
+uninstall_app() {
+    local pkg="$1"
+    log_blue "=========================================="
+    log_blue "   UNINSTALL ${pkg^^}"
+    log_blue "=========================================="
+    
+    echo ""
+    log_info "Mengambil packages terkait $pkg..."
+    
+    local related_packages=($(get_related_packages "$pkg"))
+    
+    if [ ${#related_packages[@]} -eq 0 ]; then
+        case "$pkg" in
+            luci-app-openclash|luci-app-nikki|luci-app-passwall)
+                log_warn "Tidak ada Tunnel $pkg yang terinstall"
+                ;;
+            luci-app-bandix|luci-app-netmonitor)
+                log_warn "Tidak ada Tools $pkg yang terinstall"
+                ;;
+        esac
+        return 1
+    fi
+    
+    echo ""
+    log_info "Packages yang akan dihapus:"
+    for pkg_name in "${related_packages[@]}"; do
+        echo "  - $pkg_name"
+    done
+    
+    echo ""
+    echo -n "Remove configurasi: "
+    
+    remove_app_folders "$pkg"
+    
+    echo ""
+    local removed_count=0
+    local failed_count=0
+    
+    for pkg_name in "${related_packages[@]}"; do
+        if uninstall_package_with_fallback "$pkg_name"; then
+            ((removed_count++))
+        else
+            ((failed_count++))
+        fi
+    done
+    
+    echo ""
+    log_info "Hasil uninstall:"
+    log_info "  - Berhasil: $removed_count packages"
+    if [ $failed_count -gt 0 ]; then
+        log_warn "  - Gagal: $failed_count packages"
+    fi
+    
+    if [ $removed_count -gt 0 ]; then
+        case "$pkg" in
+            luci-app-openclash|luci-app-nikki|luci-app-passwall)
+                log_info "$pkg Tunnel berhasil dihapus"
+                ;;
+            luci-app-bandix|luci-app-netmonitor)
+                log_info "$pkg Tools berhasil dihapus"
+                ;;
+        esac
+        return 0
+    else
+        case "$pkg" in
+            luci-app-openclash|luci-app-nikki|luci-app-passwall)
+                log_error "Gagal menghapus $pkg Tunnel"
+                ;;
+            luci-app-bandix|luci-app-netmonitor)
+                log_error "Gagal menghapus $pkg Tools"
+                ;;
+        esac
+        return 1
+    fi
+}
+
+handle_uninstall() {
+    show_banner
+    echo ""
+    
+    log_blue "=========================================="
+    log_blue "      UNINSTALL TUNNELS & TOOLS"
+    log_blue "=========================================="
+    
+    echo ""
+    log_info "Memeriksa aplikasi yang terinstall..."
+    
+    local apps=("luci-app-openclash" "luci-app-passwall" "luci-app-nikki" "luci-app-bandix" "luci-app-netmonitor")
+    local installed_apps=()
+    
+    for app in "${apps[@]}"; do
+        if is_package_installed "$app"; then
+            installed_apps+=("$app")
+        fi
+    done
+    
+    if [ ${#installed_apps[@]} -eq 0 ]; then
+        log_warn "Tidak ada Tunnel atau Tools yang terinstall"
+        echo ""
+        echo -n "Tekan Enter untuk melanjutkan..."
+        read
+        return
+    fi
+    
+    echo ""
+    log_info "Aplikasi yang terinstall:"
+    for i in "${!installed_apps[@]}"; do
+        local app_name="${installed_apps[$i]}"
+        case "$app_name" in
+            luci-app-openclash) app_display="OpenClash (Tunnel)" ;;
+            luci-app-passwall) app_display="PassWall (Tunnel)" ;;
+            luci-app-nikki) app_display="Nikki (Tunnel)" ;;
+            luci-app-bandix) app_display="Bandix (Tools)" ;;
+            luci-app-netmonitor) app_display="Netmonitor (Tools)" ;;
+            *) app_display="$app_name" ;;
+        esac
+        echo "  $((i+1))) $app_display"
+    done
+    
+    echo ""
+    echo "  $((${#installed_apps[@]}+1))) Uninstall Semua"
+    echo "  0) Batal"
+    echo ""
+    echo -n "Pilih [0-$((${#installed_apps[@]}+1))]: "
+    read uninstall_choice
+    
+    if [ "$uninstall_choice" = "0" ]; then
+        log_info "Uninstall dibatalkan"
+        return
+    elif [ "$uninstall_choice" = "$((${#installed_apps[@]}+1))" ]; then
+        echo ""
+        log_blue "=========================================="
+        log_blue "      UNINSTALL ALL TUNNELS & TOOLS"
+        log_blue "=========================================="
+        
+        local uninstall_count=0
+        local tunnel_count=0
+        local tools_count=0
+        
+        for app in "${installed_apps[@]}"; do
+            echo ""
+            if uninstall_app "$app"; then
+                ((uninstall_count++))
+                case "$app" in
+                    luci-app-openclash|luci-app-nikki|luci-app-passwall)
+                        ((tunnel_count++))
+                        ;;
+                    luci-app-bandix|luci-app-netmonitor)
+                        ((tools_count++))
+                        ;;
+                esac
+            fi
+        done
+        
+        echo ""
+        log_info "Total berhasil dihapus: $uninstall_count dari ${#installed_apps[@]} aplikasi"
+        log_info "  - Tunnels: $tunnel_count"
+        log_info "  - Tools: $tools_count"
+    elif [ "$uninstall_choice" -ge 1 ] && [ "$uninstall_choice" -le "${#installed_apps[@]}" ]; then
+        local selected_app="${installed_apps[$((uninstall_choice-1))]}"
+        echo ""
+        uninstall_app "$selected_app"
+    else
+        log_error "Pilihan tidak valid: $uninstall_choice"
+    fi
+    
+    echo ""
+    echo -n "Tekan Enter untuk melanjutkan..."
+    read
+}
+
+main() {
+    while true; do
+        show_menu
+        read choice
+        
+        case $choice in
+            1)
+                show_banner
+                check_dependencies
+                select_openwrt_version
+                select_architecture
+                select_core_version
+                echo ""
+                repair_opkg_database
+                echo ""
+                if install_openclash; then
+                    restart_services
+                fi
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            2)
+                show_banner
+                check_dependencies
+                select_openwrt_version
+                select_architecture
+                echo ""
+                repair_opkg_database
+                echo ""
+                if install_passwall; then
+                    restart_services
+                fi
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            3)
+                show_banner
+                check_dependencies
+                select_openwrt_version
+                select_architecture
+                echo ""
+                repair_opkg_database
+                echo ""
+                if install_nikki; then
+                    restart_services
+                fi
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            4)
+                show_banner
+                check_dependencies
+                select_openwrt_version
+                select_architecture
+                select_core_version
+                echo ""
+                repair_opkg_database
+                echo ""
+                if install_openclash; then
+                    echo ""
+                    install_nikki
+                    restart_services
+                fi
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            5)
+                show_banner
+                check_dependencies
+                select_openwrt_version
+                select_architecture
+                echo ""
+                repair_opkg_database
+                echo ""
+                if install_passwall; then
+                    echo ""
+                    install_nikki
+                    restart_services
+                fi
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            6)
+                show_banner
+                check_dependencies
+                select_openwrt_version
+                select_architecture
+                select_core_version
+                echo ""
+                repair_opkg_database
+                echo ""
+                if install_openclash; then
+                    echo ""
+                    install_passwall
+                    restart_services
+                fi
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            7)
+                show_banner
+                check_dependencies
+                select_openwrt_version
+                select_architecture
+                select_core_version
+                echo ""
+                repair_opkg_database
+                echo ""
+                log_blue "=========================================="
+                log_blue "      INSTALL ALL TUNNELS & TOOLS"
+                log_blue "=========================================="
+                
+                local install_count=0
+                local tunnel_count=0
+                local tools_count=0
+                
+                if install_openclash; then
+                    ((install_count++))
+                    ((tunnel_count++))
+                fi
+                
+                echo ""
+                if install_passwall; then
+                    ((install_count++))
+                    ((tunnel_count++))
+                fi
+                
+                echo ""
+                if install_nikki; then
+                    ((install_count++))
+                    ((tunnel_count++))
+                fi
+                
+                echo ""
+                if install_bandix; then
+                    ((install_count++))
+                    ((tools_count++))
+                fi
+                
+                restart_services
+                
+                echo ""
+                log_info "Total berhasil diinstall: $install_count dari 4 aplikasi"
+                log_info "  - Tunnels: $tunnel_count dari 3"
+                log_info "  - Tools: $tools_count dari 1"
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            8)
+                handle_uninstall
+                ;;
+            10)
+                download_openclash_core
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            11)
+                download_nikki_core
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            12)
+                show_banner
+                check_dependencies
+                select_openwrt_version
+                select_architecture
+                echo ""
+                repair_opkg_database
+                echo ""
+                if install_bandix; then
+                    restart_services
+                fi
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            13)
+                show_banner
+                check_dependencies
+                select_openwrt_version
+                select_architecture
+                echo ""
+                repair_opkg_database
+                echo ""
+                if install_netmonitor; then
+                    restart_services
+                fi
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+            0)
+                clear
+                echo ""
+                log_blue "=========================================="
+                log_blue "        TERIMA KASIH!"
+                log_blue "=========================================="
+                echo ""
+                log_info "Script XDevTools v1.5"
+                log_info "Created by FIDZ"
+                echo ""
+                exit 0
+                ;;
+            *)
+                log_error "Pilihan tidak valid: $choice"
+                echo ""
+                echo -n "Tekan Enter untuk melanjutkan..."
+                read
+                ;;
+        esac
+    done
+}
+
+if [ "$(id -u)" != "0" ]; then
+    log_error "Script ini harus dijalankan sebagai root"
+    exit 1
+fi
+
+if ! command -v opkg &> /dev/null; then
+    log_error "OPKG tidak ditemukan. Script ini hanya untuk OS OpenWRT"
+    exit 1
+fi
+
+main "$@"
