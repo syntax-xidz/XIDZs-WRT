@@ -109,8 +109,8 @@ rename_firmware() {
         "-s905x4-|s905x4_AT01-Ax810"
         
         # Amlogic Ophub
-        "_s905x_|s905x_HG680P-WIFION"
-        "_s905x-b860h_|s905x_B860H-WIFION"
+        "_s905x_|s905x_HG680P-WIFIOFF"
+        "_s905x-b860h_|s905x_B860H-WIFIOFF"
         "_s905d_|s905d_Phicomm-N1"
         "_s905l-mg101_|s905l_Mibox-4"
         "_s905l_|s905l_B860AV2"
@@ -139,11 +139,9 @@ rename_firmware() {
         "_s905x3-a95xf3-gb_|s905x3_A95xF3-1Gb"
         "_s905x3-a95xf3_|s905x3_A95xF3-100M"
         "_s905x3-x88-pro-x3_|s905x3_X88-Pro-X3"
-        "_s905x3-h96max_|s905x3_H96-Max-X3"
         "_s905x4-advan_|s905x4_AT01-AX810"
         "_s905w_|s905w_TX3_Mini"
         "_s905w-x96-mini_|s905w-X96-Mini"
-        "_s905w-x96w_|s905w-X96W"
         
         # Allwinner Ophub
         "_allwinner_orangepi-3_|OrangePi_3"
