@@ -21,6 +21,11 @@ rename_firmware() {
         # Format: "search|replace"
 
         # bcm27xx
+        "-bcm27xx-bcm2708-rpi-1-ext4-factory|RaspberryPi_1B-Ext4_Factory"
+        "-bcm27xx-bcm2708-rpi-1-ext4-sysupgrade|RaspberryPi_1B-Ext4_Sysupgrade"
+        "-bcm27xx-bcm2708-rpi-1-squashfs-factory|RaspberryPi_1B-Squashfs_Factory"
+        "-bcm27xx-bcm2708-rpi-1-squashfs-sysupgrade|RaspberryPi_1B-Squashfs_Sysupgrade"
+        
         "-bcm27xx-bcm2709-rpi-2-ext4-factory|RaspberryPi_2B-Ext4_Factory"
         "-bcm27xx-bcm2709-rpi-2-ext4-sysupgrade|RaspberryPi_2B-Ext4_Sysupgrade"
         "-bcm27xx-bcm2709-rpi-2-squashfs-factory|RaspberryPi_2B-Squashfs_Factory"
@@ -164,7 +169,7 @@ rename_firmware() {
         "_nanopi-r5s_|Nanopi-r5s"
         "_nanopi-r5c_|Nanopi-r5c"
         
-        # x86_64 Official
+        # x86 Official
         "x86-64-generic-ext4-combined-efi|X86_64_Generic_Ext4_Combined_EFI"
         "x86-64-generic-ext4-combined|X86_64_Generic_Ext4_Combined"
         "x86-64-generic-ext4-rootfs|X86_64_Generic_Ext4_Rootfs"
@@ -172,6 +177,14 @@ rename_firmware() {
         "x86-64-generic-squashfs-combined|X86_64_Generic_Squashfs_Combined"
         "x86-64-generic-squashfs-rootfs|X86_64_Generic_Squashfs_Rootfs"
         "x86-64-generic-rootfs|X86_64_Generic_Rootfs"
+        
+        "x86-generic-generic-ext4-combined-efi|X86_32_Generic_Ext4_Combined_EFI"
+        "x86-generic-generic-ext4-combined|X86_32_Generic_Ext4_Combined"
+        "x86-generic-generic-ext4-rootfs|X86_32_Generic_Ext4_Rootfs"
+        "x86-generic-generic-squashfs-combined-efi|X86_32_Generic_Squashfs_Combined_EFI"
+        "x86-generic-generic-squashfs-combined|X86_32_Generic_Squashfs_Combined"
+        "x86-generic-generic-squashfs-rootfs|X86_32_Generic_Squashfs_Rootfs"
+        "x86-generic-generic-rootfs|X86_32_Generic_Rootfs"
     )
 
    for pattern in "${search_replace_patterns[@]}"; do
