@@ -43,7 +43,7 @@ jobs:
           fi
           
           gh workflow run Builds.yml \
-            -f release_branch="openwrt:25.12.5" \
+            -f release_branch="openwrt:24.10.8" \
             -f rootfs_size="1024" \
             -f target="all-devices-ophub" \
             -f tunnel="all-tunnel-v2" \
@@ -67,7 +67,7 @@ jobs:
           fi
           
           gh workflow run Builds.yml \
-            -f release_branch="openwrt:25.12.5" \
+            -f release_branch="openwrt:24.10.8" \
             -f rootfs_size="1024" \
             -f target="all-devices-ulo" \
             -f tunnel="all-tunnel-v2" \
@@ -91,7 +91,7 @@ jobs:
           fi
           
           gh workflow run Builds.yml \
-            -f release_branch="openwrt:25.12.5" \
+            -f release_branch="openwrt:24.10.8" \
             -f rootfs_size="1024" \
             -f target="all-devices-official" \
             -f tunnel="all-tunnel-v2" \
@@ -115,7 +115,7 @@ jobs:
           fi
           
           gh workflow run Builds.yml \
-            -f release_branch="openwrt:25.12.5" \
+            -f release_branch="openwrt:24.10.8" \
             -f rootfs_size="1024" \
             -f target="opt-devices-official" \
             -f tunnel="all-tunnel-v2" \
